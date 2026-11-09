@@ -7,8 +7,11 @@
 import json
 from functools import cache
 from pathlib import Path
+from random import choice
+from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+LEARNING_LOG_DIR = DATA_DIR.parent / "learning_log"
 MAX_RESULTS = 3
 
 
@@ -77,3 +80,33 @@ def get_lecture_summary(lecture: int) -> str:
         available = sorted(p.stem for p in (DATA_DIR / "lectures").glob("*.md"))
         return f"第{lecture}回の要点はまだありません。用意されている回: {', '.join(available)}"
     return path.read_text(encoding="utf-8")
+
+
+def make_quiz(lecture: int) -> str:
+    """指定した回の確認問題を求められたら、用語集から一問とその答えを返す。"""
+    terms = [entry for entry in load_glossary() if entry["lecture"] == lecture]
+    if not terms:
+        return f"第{lecture}回の確認問題に使える用語がありません。"
+    entry = choice(terms)
+    return json.dumps(
+        {"question": f"「{entry['term']}」の意味は？", "answer": entry["definition"]},
+        ensure_ascii=False,
+    )
+
+
+def save_learning_log(lecture: int, summary: str) -> str:
+    """受講者が保存を頼んだ学習メモを、講義回とメモの内容を指定して保存する。"""
+    summary = summary.strip()
+    if lecture < 1 or not summary:
+        return "講義回は1以上を指定し、学習メモを入力してください。"
+
+    LEARNING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    path = LEARNING_LOG_DIR / f"lecture-{lecture:02d}-{uuid4().hex}.json"
+    payload = json.dumps({"lecture": lecture, "summary": summary}, ensure_ascii=False)
+    temporary_path = path.with_suffix(".tmp")
+    try:
+        temporary_path.write_text(payload + "\n", encoding="utf-8")
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return f"learning_log/{path.name} に保存しました。"
